@@ -20,6 +20,13 @@
 
 # COMMAND ----------
 
+# Create token widget here so it appears in this notebook's UI.
+# Paste your NOAA token in the box above, then re-run all.
+# NEVER hardcode your token in this file.
+dbutils.widgets.text("noaa_token", "", "NOAA API Token")
+
+# COMMAND ----------
+
 # MAGIC %run ../configs/00_config
 
 # COMMAND ----------
