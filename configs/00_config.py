@@ -71,7 +71,13 @@ TBL_GOLD_FEATURES  = tbl(GOLD, "drought_features")
 # Store in Databricks Secrets:
 #   databricks secrets create-scope --scope drought-secrets
 #   databricks secrets put-secret --scope drought-secrets --key noaa-token
-NOAA_TOKEN      = dbutils.secrets.get(scope="drought-secrets", key="noaa-token")
+try:
+    NOAA_TOKEN = dbutils.secrets.get(scope="drought-secrets", key="noaa-token")
+except:
+    # Community Edition does not support secrets — use a widget instead.
+    # NEVER commit your token to GitHub.
+    dbutils.widgets.text("noaa_token", "", "NOAA API Token")
+    NOAA_TOKEN = dbutils.widgets.get("noaa_token")
 NOAA_BASE_URL   = "https://www.ncei.noaa.gov/cdo-web/api/v2/data"
 NOAA_STATION_ID = "GHCND:USW00003145"   # Yuma MCAS, AZ
 NOAA_DATASET_ID = "GHCND"
