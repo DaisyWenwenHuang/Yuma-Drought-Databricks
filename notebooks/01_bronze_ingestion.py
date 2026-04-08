@@ -77,7 +77,7 @@ def _fetch_noaa_page(start: str, end: str, offset: int, token: str) -> List[Dict
         NOAA_BASE_URL,
         params=params,
         headers={"token": token},
-        timeout=30,
+        timeout=120,
     )
     resp.raise_for_status()
     return resp.json().get("results", [])
@@ -115,6 +115,18 @@ def fetch_noaa_incremental(fetch_start: str, fetch_end: str, token: str) -> List
 
     return all_records
 
+
+# ── Quick token validation ─────────────────────────────────────────────────────
+assert NOAA_TOKEN, "NOAA_TOKEN is empty — paste your token in the widget above and re-run."
+test_resp = requests.get(
+    NOAA_BASE_URL,
+    params={"datasetid": "GHCND", "stationid": NOAA_STATION_ID,
+            "startdate": "2024-01-01", "enddate": "2024-01-03", "limit": 1},
+    headers={"token": NOAA_TOKEN},
+    timeout=30,
+)
+assert test_resp.status_code == 200, f"NOAA API error {test_resp.status_code}: {test_resp.text}"
+print("NOAA token OK")
 
 # ── Determine incremental fetch window ────────────────────────────────────────
 climate_watermark = get_watermark(TBL_BRONZE_CLIMATE, "CAST(date AS DATE)", HISTORY_START)
