@@ -16,14 +16,14 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install dataretrieval requests --quiet
+# Create token widget before pip install so it survives the kernel restart.
+# Paste your NOAA token in the box above, then run all.
+# NEVER hardcode your token in this file.
+dbutils.widgets.text("noaa_token", "", "NOAA API Token")
 
 # COMMAND ----------
 
-# Create token widget here so it appears in this notebook's UI.
-# Paste your NOAA token in the box above, then re-run all.
-# NEVER hardcode your token in this file.
-dbutils.widgets.text("noaa_token", "", "NOAA API Token")
+# MAGIC %pip install dataretrieval requests --quiet
 
 # COMMAND ----------
 
@@ -205,7 +205,13 @@ raw_gwl = (
     .reset_index()
 )
 
-param_col = f"{USGS_PARAM_CODE}_Mean"
+# USGS column name varies: may be "72019_Mean", "72019_00003_Mean", etc.
+# Find it dynamically by looking for a column containing the param code.
+param_candidates = [c for c in raw_gwl.columns if USGS_PARAM_CODE in c and "Mean" in c]
+print(f"USGS columns: {list(raw_gwl.columns)}")
+assert param_candidates, f"No column found containing '{USGS_PARAM_CODE}' and 'Mean'. Columns: {list(raw_gwl.columns)}"
+param_col = param_candidates[0]
+print(f"Using column: {param_col}")
 df_gwl_pd = raw_gwl[["datetime", param_col]].copy()
 df_gwl_pd.columns = ["date", "gwl_ft"]
 df_gwl_pd["date"]        = pd.to_datetime(df_gwl_pd["date"]).dt.date.astype(str)
