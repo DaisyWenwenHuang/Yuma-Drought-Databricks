@@ -247,80 +247,36 @@ display(spark.table(TBL_BRONZE_GWL).orderBy("date", ascending=False).limit(10))
 # MAGIC ## 3 · USDM Drought Monitor — Weekly County Statistics
 # MAGIC
 # MAGIC Yuma County FIPS **04027**.
-# MAGIC Returns the % of county area in each drought category (None, D0–D4) per weekly release.
-# MAGIC USDM publishes new data every **Tuesday** covering the previous week.
-# MAGIC No API key required.
+# MAGIC Source: CSV uploaded to Unity Catalog volume (USDM API is blocked on Community Edition).
+# MAGIC File: `/Volumes/drought_forecast/bronze/landing/usdm_yuma.csv`
+# MAGIC To refresh: download latest CSV from droughtmonitor.unl.edu and re-upload.
 
 # COMMAND ----------
 
-def fetch_usdm_incremental(county_fips: str, start: str, end: str) -> List[Dict]:
-    """
-    Fetch weekly USDM drought statistics for a county.
-    Response is a JSON array; each element represents one weekly snapshot.
-    Keys: MapDate, None, D0, D1, D2, D3, D4, ValidStart, ValidEnd
-    """
-    params = {
-        "aoi":            "county",
-        "aoiid":          county_fips,
-        "startdate":      start,
-        "enddate":        end,
-        "statisticstype": "1",   # 1 = percent of area
-    }
-    resp = requests.get(USDM_BASE_URL, params=params, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    # Handle both direct array and wrapped {"statisticsData": [...]} formats
-    return data if isinstance(data, list) else data.get("statisticsData", data.get("data", []))
-
+USDM_CSV_PATH = "/Volumes/drought_forecast/bronze/landing/usdm_yuma.csv"
 
 drought_watermark = get_watermark(TBL_BRONZE_DROUGHT, "CAST(map_date AS DATE)", HISTORY_START)
-print(f"USDM fetch window : {drought_watermark} → {FETCH_END}")
+print(f"USDM watermark : {drought_watermark}")
 
-usdm_records = fetch_usdm_incremental(USDM_COUNTY_FIPS, drought_watermark, FETCH_END)
-print(f"USDM records fetched: {len(usdm_records):,}")
-
-schema_drought_raw = StructType([
-    StructField("map_date",    StringType(),    nullable=False),  # YYYY-MM-DD release date
-    StructField("none_pct",    DoubleType(),    nullable=True),   # % no drought
-    StructField("d0_pct",      DoubleType(),    nullable=True),   # Abnormally Dry
-    StructField("d1_pct",      DoubleType(),    nullable=True),   # Moderate Drought
-    StructField("d2_pct",      DoubleType(),    nullable=True),   # Severe Drought
-    StructField("d3_pct",      DoubleType(),    nullable=True),   # Extreme Drought
-    StructField("d4_pct",      DoubleType(),    nullable=True),   # Exceptional Drought
-    StructField("valid_start", StringType(),    nullable=True),
-    StructField("valid_end",   StringType(),    nullable=True),
-    StructField("county_fips", StringType(),    nullable=False),
-    StructField("ingested_at", TimestampType(), nullable=False),
-])
-
-
-def _parse_usdm(r: Dict) -> tuple:
-    def _f(keys):
-        for k in keys:
-            v = r.get(k)
-            if v is not None:
-                return float(v)
-        return None
-
-    return (
-        str(r.get("MapDate") or r.get("map_date", "")),
-        _f(["None", "none_pct"]),
-        _f(["D0", "d0_pct"]),
-        _f(["D1", "d1_pct"]),
-        _f(["D2", "d2_pct"]),
-        _f(["D3", "d3_pct"]),
-        _f(["D4", "d4_pct"]),
-        str(r.get("ValidStart") or r.get("valid_start") or ""),
-        str(r.get("ValidEnd")   or r.get("valid_end")   or ""),
-        USDM_COUNTY_FIPS,
-        INGESTED_AT,
+df_drought_new = (
+    spark.read.csv(USDM_CSV_PATH, header=True, inferSchema=True)
+    .filter(F.col("Week") >= drought_watermark)
+    .select(
+        F.date_format(F.col("Week"), "yyyy-MM-dd").alias("map_date"),
+        F.col("None").alias("none_pct"),
+        F.col("D0").alias("d0_pct"),
+        F.col("D1").alias("d1_pct"),
+        F.col("D2").alias("d2_pct"),
+        F.col("D3").alias("d3_pct"),
+        F.col("D4").alias("d4_pct"),
+        F.lit(None).cast("string").alias("valid_start"),
+        F.lit(None).cast("string").alias("valid_end"),
+        F.lit(USDM_COUNTY_FIPS).alias("county_fips"),
+        F.lit(INGESTED_AT).alias("ingested_at"),
     )
-
-
-df_drought_new = spark.createDataFrame(
-    [_parse_usdm(r) for r in usdm_records],
-    schema=schema_drought_raw,
 )
+
+print(f"USDM records loaded: {df_drought_new.count():,}")
 
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {TBL_BRONZE_DROUGHT}
