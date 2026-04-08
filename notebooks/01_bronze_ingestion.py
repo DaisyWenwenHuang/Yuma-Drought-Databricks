@@ -209,14 +209,19 @@ raw_gwl = (
 # Find it dynamically by looking for a column containing the param code.
 param_candidates = [c for c in raw_gwl.columns if USGS_PARAM_CODE in c and "Mean" in c]
 print(f"USGS columns: {list(raw_gwl.columns)}")
-assert param_candidates, f"No column found containing '{USGS_PARAM_CODE}' and 'Mean'. Columns: {list(raw_gwl.columns)}"
-param_col = param_candidates[0]
-print(f"Using column: {param_col}")
-df_gwl_pd = raw_gwl[["datetime", param_col]].copy()
-df_gwl_pd.columns = ["date", "gwl_ft"]
-df_gwl_pd["date"]        = pd.to_datetime(df_gwl_pd["date"]).dt.date.astype(str)
-df_gwl_pd["site_no"]     = USGS_SITE_NO
-df_gwl_pd["ingested_at"] = INGESTED_AT
+
+if not param_candidates:
+    print("No new USGS data available — skipping GWL ingestion.")
+    df_gwl_pd = pd.DataFrame(columns=["date", "gwl_ft", "site_no", "ingested_at"])
+else:
+    param_col = param_candidates[0]
+    print(f"Using column: {param_col}")
+    df_gwl_pd = raw_gwl[["datetime", param_col]].copy()
+    df_gwl_pd.columns = ["date", "gwl_ft"]
+    df_gwl_pd["date"]        = pd.to_datetime(df_gwl_pd["date"]).dt.date.astype(str)
+    df_gwl_pd["site_no"]     = USGS_SITE_NO
+    df_gwl_pd["ingested_at"] = INGESTED_AT
+
 print(f"USGS records fetched: {len(df_gwl_pd):,}")
 
 schema_gwl_raw = StructType([
